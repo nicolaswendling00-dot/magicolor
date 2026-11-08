@@ -2,6 +2,8 @@
 
 PWA de coloriage magique : on importe un coloriage (PNG, JPG, WebP), on associe chaque symbole à sa couleur, puis on colorie du bout du doigt. Aucune dépendance, aucun build.
 
+En ligne : https://nicolaswendling00-dot.github.io/magicolor/
+
 ## Lancer
 
 ```bash
@@ -10,7 +12,7 @@ node serve.mjs 5210
 
 Puis ouvrir http://localhost:5210. Sur `localhost` le service worker est désactivé pour toujours servir les fichiers frais ; sur `127.0.0.1` ou en ligne il est actif (hors ligne après le premier chargement).
 
-Pour publier (GitHub Pages ou autre hébergement statique), copier le dossier tel quel, sans `serve.mjs`, `tools/` ni `tests/`. Changer `CACHE_NAME` dans `sw.js` à chaque version.
+Publié sur GitHub Pages depuis `main` : `serve.mjs`, `tools/` et `tests/` restent en local (`.gitignore`). Changer `CACHE_NAME` dans `sw.js` à chaque version.
 
 ## Organisation
 

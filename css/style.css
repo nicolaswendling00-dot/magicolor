@@ -103,7 +103,10 @@ svg.bit { fill: currentColor; }
 .lib-mascot { width: 76px; height: 76px; grid-row: span 1; }
 .lib-hello h1 { font-size: 30px; }
 .lib-hello p { color: var(--ink-soft); font-weight: 600; margin-top: 4px; }
-.lib-head .btn { grid-column: 1 / -1; margin-top: 14px; }
+.lib-actions { grid-column: 1 / -1; display: flex; flex-wrap: wrap; gap: 10px; margin-top: 14px; position: relative; }
+.lib-actions .btn { flex: 1 1 200px; }
+.seg-big { display: flex; }
+.seg-big button { flex: 1; min-height: 52px; font-size: 19px; }
 .lib-head .deco { color: #fff; opacity: .9; }
 .lib-head .d1 { width: 20px; height: 20px; right: 78px; top: 10px; color: #f6c453; }
 .lib-head .d2 { width: 16px; height: 16px; right: 112px; top: 24px; color: #fff; }
@@ -312,7 +315,8 @@ svg.bit { fill: currentColor; }
 @media (min-width: 900px) {
   .library { padding: 32px 32px 48px; }
   .lib-head { grid-template-columns: auto 1fr auto; padding: 30px 34px; }
-  .lib-head .btn { grid-column: auto; margin: 0; }
+  .lib-actions { grid-column: auto; margin: 0; flex-direction: column; }
+  .lib-actions .btn { flex: none; }
   .lib-mascot { width: 96px; height: 96px; }
   .lib-hello h1 { font-size: 36px; }
   .cards { grid-template-columns: repeat(auto-fill, minmax(230px, 1fr)); gap: 20px; }

@@ -4,6 +4,7 @@ import { Sheet } from './sheet.js';
 import { autoLabels, sortSymbols } from './glyphs.js';
 import { regionSymbols, clusterHeights } from './model.js';
 import { VERSION } from './analyze.js';
+import { drawColoring, truthLabels } from './photo.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
@@ -13,6 +14,8 @@ const esc = s => String(s).replace(/[&<>"']/g, c => ({ '&': '&amp;', '<': '&lt;'
 const uid = () => (crypto.randomUUID ? crypto.randomUUID() : Date.now().toString(36) + Math.random().toString(36).slice(2));
 const hexRgb = h => [1, 3, 5].map(i => parseInt(h.slice(i, i + 2), 16));
 const lumOf = h => { const [r, g, b] = hexRgb(h); return r * 0.299 + g * 0.587 + b * 0.114; };
+// caractères des symboles de la palette : « 12 » apporte 1 et 2
+const alphabet = pal => [...new Set(pal.map(p => p.sym).join(''))];
 const plural = (n, one, many) => `${n.toLocaleString('fr-FR')} ${n > 1 ? many : one}`;
 
 const MAX_PIXELS = 3_600_000; // au delà, l'image est réduite : mémoire des téléphones
@@ -31,7 +34,7 @@ const cache = new Map(); // id → { canvas, res, key } : évite de réanalyser
 
 // --- Analyse --------------------------------------------------------------------
 let worker;
-function analyseCanvas(canvas, settings) {
+function analyseCanvas(canvas, settings, kind = 'analyse') {
   worker ||= new Worker(new URL('./worker.js', import.meta.url), { type: 'module' });
   const d = canvas.getContext('2d', { willReadFrequently: true }).getImageData(0, 0, canvas.width, canvas.height);
   return new Promise((ok, ko) => {
@@ -45,7 +48,7 @@ function analyseCanvas(canvas, settings) {
     const fail = e => { done(); worker = null; ko(new Error(e.message || 'Analyse impossible sur ce navigateur')); };
     worker.addEventListener('message', on);
     worker.addEventListener('error', fail);
-    worker.postMessage({ id, rgba: d.data.buffer, w: canvas.width, h: canvas.height, opts: settings }, [d.data.buffer]);
+    worker.postMessage({ id, kind, rgba: d.data.buffer, w: canvas.width, h: canvas.height, opts: settings }, [d.data.buffer]);
   });
 }
 
@@ -74,7 +77,7 @@ async function blobToCanvas(blob) {
 async function migrate(doc, res) {
   if (doc.algo === VERSION) return;
   const hadFills = Object.keys(doc.fills).length > 0;
-  doc.labels = autoLabels(res.clusters, clusterHeights(res), doc.palette.map(p => p.sym).filter(s => s.length === 1)).labels;
+  doc.labels = autoLabels(res.clusters, clusterHeights(res), alphabet(doc.palette)).labels;
   doc.overrides = [];
   doc.fills = {};
   doc.completed = false;
@@ -185,19 +188,107 @@ function errorBox(title, text) {
 }
 
 // --- Import ---------------------------------------------------------------------
-function pickFile() {
+function pickFile(photo = false) {
   const input = document.createElement('input');
   input.type = 'file';
   input.accept = 'image/png,image/jpeg,image/webp';
-  input.onchange = () => input.files[0] && importFile(input.files[0]);
+  input.onchange = () => input.files[0] && importFile(input.files[0], photo);
   input.click();
 }
 
-function importFile(file) {
+// photo = true : la photo devient un coloriage numéroté (écran #/photo)
+function importFile(file, photo = false) {
   const okType = ACCEPT.includes(file.type) || /\.(png|jpe?g|webp)$/i.test(file.name || '');
   if (!okType) { toast('Choisis une image PNG, JPG ou WebP.'); return; }
-  pending = { blob: file, name: (file.name || 'Mon coloriage').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim() };
-  location.hash = '#/new';
+  const name = (file.name || '').replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').trim();
+  pending = { blob: file, photo, name: name || (photo ? 'Ma photo' : 'Mon coloriage') };
+  location.hash = photo ? '#/photo' : '#/new';
+}
+
+// --- Photo → coloriage ------------------------------------------------------------
+const PHOTO_COLORS = [8, 12, 16, 24];
+const PHOTO_WORK = 600; // côté long de travail : décide la finesse des zones
+const PHOTO_SCALE = 3;  // agrandissement du dessin final, pour loger les numéros
+
+async function viewPhoto() {
+  const tok = routeTok;
+  const P = pending;
+  P.results ||= new Map();
+  P.colors ||= 12;
+  document.title = 'Transformer une photo, MagicColor';
+  app.innerHTML = `<main class="screen setup">
+    <header class="topbar">
+      <a class="icon-btn" href="#/" aria-label="Retour">${icon('back')}</a>
+      <h1>Transformer une photo</h1>
+    </header>
+    <div class="setup-wrap">
+      <section class="setup-preview">
+        <div class="preview-frame" id="pframe">${loader('Je prépare la photo…')}</div>
+        <p class="preview-stats" id="pstats"></p>
+      </section>
+      <div class="setup-form">
+        <section class="block">
+          <h2 id="nc">Nombre de couleurs</h2>
+          <p class="hint">Plus de couleurs donne plus de détails, avec des zones plus petites.</p>
+          <div class="seg seg-big" role="radiogroup" aria-labelledby="nc">
+            ${PHOTO_COLORS.map(n => `<button type="button" role="radio" data-n="${n}" aria-checked="${n === P.colors}">${n}</button>`).join('')}
+          </div>
+        </section>
+      </div>
+      <footer class="setup-foot">
+        <button class="btn primary big" id="go" disabled>Continuer</button>
+      </footer>
+    </div>
+  </main>`;
+
+  const frame = $('#pframe'), stats = $('#pstats'), go = $('#go');
+  let small;
+  try {
+    const full = await blobToCanvas(P.blob);
+    const k = Math.min(1, PHOTO_WORK / Math.max(full.width, full.height));
+    small = document.createElement('canvas');
+    small.width = Math.max(1, Math.round(full.width * k)); small.height = Math.max(1, Math.round(full.height * k));
+    const c = small.getContext('2d', { willReadFrequently: true });
+    c.imageSmoothingQuality = 'high';
+    c.drawImage(full, 0, 0, small.width, small.height);
+  } catch (err) {
+    if (tok === routeTok) $('.setup-wrap').innerHTML = errorBox('Cette photo ne s’ouvre pas', err.message || 'Essaie avec une autre photo.');
+    return;
+  }
+  if (small.width < 40 || small.height < 40) {
+    $('.setup-wrap').innerHTML = errorBox('Cette photo est trop petite', 'Choisis une photo d’au moins 40 pixels de côté.');
+    return;
+  }
+
+  const show = async n => {
+    P.colors = n;
+    document.querySelectorAll('.seg-big button').forEach(b => b.setAttribute('aria-checked', String(Number(b.dataset.n) === n)));
+    go.disabled = true;
+    let r = P.results.get(n);
+    if (!r) {
+      frame.innerHTML = loader('Je mélange les couleurs…');
+      stats.textContent = '';
+      try {
+        r = await drawColoring(await analyseCanvas(small, { colors: n, scale: PHOTO_SCALE }, 'photo'));
+      } catch (err) {
+        if (tok === routeTok && P.colors === n) frame.innerHTML = errorBox('La transformation a échoué', err.message || 'Essaie avec une autre photo.');
+        return;
+      }
+      P.results.set(n, r);
+    }
+    if (tok !== routeTok || P.colors !== n) return;
+    r.preview.setAttribute('role', 'img');
+    r.preview.setAttribute('aria-label', 'Aperçu du coloriage terminé');
+    frame.replaceChildren(r.preview);
+    stats.textContent = `${plural(r.zones, 'zone', 'zones')} à colorier, ${plural(r.palette.length, 'couleur', 'couleurs')}.`;
+    go.disabled = false;
+  };
+  document.querySelectorAll('.seg-big button').forEach(b => b.onclick = () => show(Number(b.dataset.n)));
+  go.onclick = () => {
+    P.gen = P.results.get(P.colors);
+    if (P.gen) location.hash = '#/new';
+  };
+  show(P.colors);
 }
 
 async function importExample() {
@@ -221,11 +312,15 @@ async function viewLibrary() {
         <h1>Mes coloriages</h1>
         <p>Bonjour ! Quel dessin fait-on apparaître aujourd'hui ?</p>
       </div>
-      <button class="btn primary big" id="new">${icon('image')}Nouveau coloriage</button>
+      <div class="lib-actions">
+        <button class="btn primary big" id="new">${icon('image')}Nouveau coloriage</button>
+        <button class="btn soft big" id="photo">${icon('camera')}Depuis une photo</button>
+      </div>
     </header>
     <section class="lib-list" aria-label="Bibliothèque">${loader('Ouverture du carnet…')}</section>
   </main>`;
-  $('#new').onclick = pickFile;
+  $('#new').onclick = () => pickFile();
+  $('#photo').onclick = () => pickFile(true);
   enableDrop();
 
   let docs;
@@ -245,9 +340,11 @@ async function viewLibrary() {
       <p>Importe un coloriage magique (PNG, JPG ou WebP), associe chaque symbole à sa couleur, puis colorie du bout du doigt.</p>
       <div class="state-actions">
         <button class="btn primary" id="new2">${icon('image')}Importer une image</button>
+        <button class="btn soft" id="photo2">${icon('camera')}Transformer une photo</button>
         <button class="btn soft" id="demo">Essayer avec un exemple</button>
       </div></div>`;
-    $('#new2').onclick = pickFile;
+    $('#new2').onclick = () => pickFile();
+    $('#photo2').onclick = () => pickFile(true);
     $('#demo').onclick = importExample;
     return;
   }
@@ -301,7 +398,7 @@ async function viewSetup(id) {
   document.title = 'Préparer le coloriage, MagicColor';
   app.innerHTML = `<main class="screen setup">
     <header class="topbar">
-      <a class="icon-btn" href="${isNew ? '#/' : `#/color/${id}`}" aria-label="Retour">${icon('back')}</a>
+      <a class="icon-btn" href="${!isNew ? `#/color/${id}` : pending && pending.photo ? '#/photo' : '#/'}" aria-label="Retour">${icon('back')}</a>
       <h1>${isNew ? 'Préparer le coloriage' : 'Couleurs et réglages'}</h1>
     </header>
     <div class="setup-wrap">${loader('Je repère les zones et les symboles…')}</div>
@@ -310,13 +407,14 @@ async function viewSetup(id) {
   const S = {};
   try {
     if (isNew) {
-      const canvas = await blobToCanvas(pending.blob);
+      S.gen = pending.gen;
+      const canvas = S.gen ? S.gen.canvas : await blobToCanvas(pending.blob);
       S.settings = { offset: 0, closeGaps: false };
       S.canvas = canvas;
       S.res = await analyseCanvas(canvas, S.settings);
       S.name = pending.name || 'Mon coloriage';
       S.fills = {};
-      autoPalette(S);
+      if (S.gen) genPalette(S); else autoPalette(S);
     } else {
       S.doc = await db.get(id);
       if (!S.doc) { location.hash = '#/'; return; }
@@ -343,6 +441,14 @@ function autoPalette(S) {
   if (!S.palette.length) S.palette = ['1', '2', '3'].map((sym, i) => ({ id: uid(), sym, color: SOFT[i] }));
 }
 
+// coloriage tiré d'une photo : on sait déjà quel chiffre est dessiné où
+function genPalette(S) {
+  S.heights = clusterHeights(S.res);
+  S.labels = truthLabels(S.res, S.gen.boxes);
+  S.overrides = new Set(S.labels.map((_, i) => i));
+  S.palette = S.gen.palette.map(p => ({ id: uid(), ...p }));
+}
+
 function renderSetup(S, tok) {
   const wrap = $('.setup-wrap');
   wrap.innerHTML = `
@@ -357,7 +463,7 @@ function renderSetup(S, tok) {
       </section>
       <section class="block">
         <h2>Couleurs</h2>
-        <p class="hint">Associe chaque chiffre ou lettre du coloriage à sa couleur.</p>
+        <p class="hint">${S.gen ? 'Les couleurs viennent de ta photo. Touche une pastille pour en changer.' : 'Associe chaque chiffre ou lettre du coloriage à sa couleur.'}</p>
         <ul class="prows" id="prows"></ul>
         <button type="button" class="btn soft add" id="add">${icon('plus')}Ajouter une couleur</button>
       </section>
@@ -425,7 +531,7 @@ function renderSetup(S, tok) {
   };
 
   const relabel = () => {
-    const syms = S.palette.map(p => p.sym).filter(s => s.length === 1);
+    const syms = alphabet(S.palette);
     const auto = autoLabels(S.res.clusters, S.heights, syms);
     S.labels = S.labels.map((l, i) => (S.overrides.has(i) && (l === '' || syms.includes(l)) ? l : auto.labels[i]));
     renderChips();
@@ -433,7 +539,7 @@ function renderSetup(S, tok) {
   };
 
   const renderChips = () => {
-    const syms = sortSymbols([...new Set(S.palette.map(p => p.sym).filter(Boolean))]);
+    const syms = sortSymbols(alphabet(S.palette));
     const g = S.res.glyphs, cl = S.res.clusters;
     const n = Math.min(S.shown, cl.length);
     $('#chips').innerHTML = cl.slice(0, n).map((c, i) => `<li class="chip">
@@ -513,10 +619,10 @@ function renderSetup(S, tok) {
     S.fills = {};
     S.reset = true;
     const palette = S.palette;
-    autoPalette(S);
-    if (S.doc) { // on garde les couleurs déjà choisies
+    if (S.gen) genPalette(S); else autoPalette(S);
+    if (S.doc || S.gen) { // on garde les couleurs déjà choisies
       S.palette = palette;
-      S.labels = autoLabels(S.res.clusters, S.heights, palette.map(p => p.sym).filter(s => s.length === 1)).labels;
+      if (!S.gen) S.labels = autoLabels(S.res.clusters, S.heights, alphabet(palette)).labels;
     }
     S.shown = 48;
     S.name = $('#name').value;
@@ -864,6 +970,7 @@ async function route() {
   let m;
   if (h === '/') return viewLibrary();
   if (h === '/new') return pending ? viewSetup(null) : (location.hash = '#/');
+  if (h === '/photo') return pending && pending.photo ? viewPhoto() : (location.hash = '#/');
   if ((m = h.match(/^\/color\/([\w-]+)$/))) return viewColor(m[1]);
   if ((m = h.match(/^\/edit\/([\w-]+)$/))) return viewSetup(m[1]);
   location.hash = '#/';

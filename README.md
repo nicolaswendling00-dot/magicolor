@@ -21,6 +21,8 @@ Publié sur GitHub Pages depuis `main` : `serve.mjs`, `tools/` et `tests/` reste
 | `js/analyze.js` | Analyse de l'image : traits, zones, symboles (calcul pur) |
 | `js/worker.js` | Lance l'analyse hors du fil principal |
 | `js/glyphs.js` | Lecture des symboles par comparaison avec des caractères dessinés |
+| `js/quantize.js` | Photo → couleurs réduites (k-means en Lab) et zones assez larges pour un numéro |
+| `js/photo.js` | Dessine traits et numéros du coloriage tiré d'une photo |
 | `js/model.js` | Symbole de chaque zone |
 | `js/sheet.js` | Canvas, peinture des zones, zoom, déplacement, toucher |
 | `js/db.js` | Sauvegarde IndexedDB |
@@ -33,6 +35,10 @@ Publié sur GitHub Pages depuis `main` : `serve.mjs`, `tools/` et `tests/` reste
 L'image est analysée une fois : seuil d'Otsu combiné à une moyenne locale (tient sur une photo mal éclairée), puis étiquetage de toutes les zones fermées (4-connexité, une diagonale ne fuit pas). Les petits traits isolés dans une seule zone sont reconnus comme symboles et appartiennent à cette zone : quand on la colorie, son chiffre disparaît. Près des traits, la couleur garde l'anticrénelage. Un toucher se résume ensuite à lire le numéro de zone sous le doigt.
 
 Si l'algorithme change les numéros de zones, incrémenter `VERSION` dans `analyze.js` : les coloriages enregistrés repartent de zéro au lieu de colorier les mauvaises zones.
+
+## Depuis une photo
+
+« Depuis une photo » réduit la photo à 600 px de côté, ramène ses couleurs au nombre choisi (8, 12, 16 ou 24) puis fond dans leur voisine les zones trop petites ou trop fines pour porter un numéro. Le dessin est agrandi ×3, tracé en gris, et chaque zone reçoit son numéro là où elle est la plus large. Les numéros ne sont pas relus : on sait où chaque chiffre a été dessiné. Vérification : `tests/photo.html` (photos dans `tests/photos`, non publiées).
 
 ## Limites connues
 

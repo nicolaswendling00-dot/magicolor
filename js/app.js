@@ -313,13 +313,11 @@ async function viewLibrary() {
         <p>Bonjour ! Quel dessin fait-on apparaître aujourd'hui ?</p>
       </div>
       <div class="lib-actions">
-        <button class="btn primary big" id="new">${icon('image')}Nouveau coloriage</button>
-        <button class="btn soft big" id="photo">${icon('camera')}Depuis une photo</button>
+        <button class="btn primary big" id="photo">${icon('camera')}Transformer une photo</button>
       </div>
     </header>
     <section class="lib-list" aria-label="Bibliothèque">${loader('Ouverture du carnet…')}</section>
   </main>`;
-  $('#new').onclick = () => pickFile();
   $('#photo').onclick = () => pickFile(true);
   enableDrop();
 
@@ -337,14 +335,10 @@ async function viewLibrary() {
         ${deco('star', 'e1')}${deco('heart', 'e2')}${deco('flower', 'e3')}
       </div>
       <h2>Ton carnet est encore tout blanc</h2>
-      <p>Importe un coloriage magique (PNG, JPG ou WebP), associe chaque symbole à sa couleur, puis colorie du bout du doigt.</p>
+      <p>Choisis une photo : MagicColor la transforme en coloriage numéroté, puis tu colories du bout du doigt.</p>
       <div class="state-actions">
-        <button class="btn primary" id="new2">${icon('image')}Importer une image</button>
-        <button class="btn soft" id="photo2">${icon('camera')}Transformer une photo</button>
         <button class="btn soft" id="demo">Essayer avec un exemple</button>
       </div></div>`;
-    $('#new2').onclick = () => pickFile();
-    $('#photo2').onclick = () => pickFile(true);
     $('#demo').onclick = importExample;
     return;
   }
@@ -385,7 +379,7 @@ async function viewLibrary() {
 
 function enableDrop() {
   const on = e => { e.preventDefault(); };
-  const drop = e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) importFile(f); };
+  const drop = e => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) importFile(f, true); };
   document.addEventListener('dragover', on);
   document.addEventListener('drop', drop);
   cleanup.push(() => { document.removeEventListener('dragover', on); document.removeEventListener('drop', drop); });

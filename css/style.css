@@ -27,7 +27,7 @@
 
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
-html { -webkit-text-size-adjust: 100%; }
+html { -webkit-text-size-adjust: 100%; touch-action: manipulation; } /* pas de zoom au double toucher (iOS ignore user-scalable) */
 body {
   margin: 0;
   min-height: 100dvh;

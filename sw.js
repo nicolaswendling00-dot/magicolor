@@ -1,6 +1,6 @@
 // Hors ligne : l'appli est mise en cache au premier chargement.
 // Changer CACHE_NAME à chaque nouvelle version.
-const CACHE_NAME = 'magicolor-v2';
+const CACHE_NAME = 'magicolor-v3';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/style.css',

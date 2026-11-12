@@ -23,6 +23,7 @@ Publié sur GitHub Pages depuis `main` : `serve.mjs`, `tools/` et `tests/` reste
 | `js/glyphs.js` | Lecture des symboles par comparaison avec des caractères dessinés |
 | `js/quantize.js` | Photo → couleurs réduites (k-means en Lab) et zones assez larges pour un numéro |
 | `js/photo.js` | Dessine traits et numéros du coloriage tiré d'une photo |
+| `js/paints.js` | Recettes de mélange avec des tubes courants (Kubelka-Munk), écran « Préparer à l’impression » |
 | `js/model.js` | Symbole de chaque zone |
 | `js/sheet.js` | Canvas, peinture des zones, zoom, déplacement, toucher |
 | `js/db.js` | Sauvegarde IndexedDB |

@@ -1,10 +1,10 @@
 // Hors ligne : l'appli est mise en cache au premier chargement.
 // Changer CACHE_NAME à chaque nouvelle version.
-const CACHE_NAME = 'magicolor-v3';
+const CACHE_NAME = 'magicolor-v4';
 const SHELL = [
   './', './index.html', './manifest.webmanifest',
   './css/style.css',
-  './js/app.js', './js/analyze.js', './js/worker.js', './js/glyphs.js', './js/model.js', './js/sheet.js', './js/db.js', './js/quantize.js', './js/photo.js',
+  './js/app.js', './js/analyze.js', './js/worker.js', './js/glyphs.js', './js/model.js', './js/sheet.js', './js/db.js', './js/quantize.js', './js/photo.js', './js/paints.js',
   './icons/icon.svg', './icons/icon-192.png', './icons/icon-512.png', './icons/icon-maskable-512.png', './icons/apple-touch-icon.png',
   './samples/exemple.webp',
 ];

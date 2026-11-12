@@ -5,6 +5,7 @@ import { autoLabels, sortSymbols } from './glyphs.js';
 import { regionSymbols, clusterHeights } from './model.js';
 import { VERSION } from './analyze.js';
 import { drawColoring, truthLabels } from './photo.js';
+import { PAINTS, recipe } from './paints.js';
 
 const $ = (s, el = document) => el.querySelector(s);
 const app = $('#app');
@@ -886,6 +887,7 @@ async function viewColor(id) {
         <span>Montrer les zones de la couleur choisie</span>
       </label>
       <button class="menu-item" data-a="export">${icon('download')}<span>Exporter en PNG</span></button>
+      <button class="menu-item" data-a="print">${icon('printer')}<span>Préparer à l'impression</span></button>
       <button class="menu-item danger" data-a="reset">${icon('reset')}<span>Recommencer le coloriage</span></button>
       <div class="dlg-actions"><button class="btn ghost" data-a="close">Fermer</button></div>
     </div>`, 'sheet-dlg');
@@ -896,6 +898,7 @@ async function viewColor(id) {
       d.close();
       if (a2.dataset.a === 'edit') { await flushSave(); location.hash = `#/edit/${doc.id}`; }
       if (a2.dataset.a === 'export') exportPng();
+      if (a2.dataset.a === 'print') { await flushSave(); location.hash = `#/print/${doc.id}`; }
       if (a2.dataset.a === 'reset') {
         if (!Object.keys(doc.fills).length) { toast('Rien à effacer pour le moment.'); return; }
         if (!await confirmBox({ title: 'Recommencer ?', text: 'Toutes les zones redeviennent blanches. Tu pourras annuler juste après.', ok: 'Recommencer', danger: true })) return;
@@ -954,6 +957,50 @@ async function viewColor(id) {
   C.dirty = false;
 }
 
+// --- Impression : dessin à peindre + recettes de mélange -------------------------
+async function viewPrint(id) {
+  const tok = routeTok;
+  document.title = 'Préparer à l’impression, MagicColor';
+  app.innerHTML = `<main class="screen print">
+    <header class="topbar">
+      <a class="icon-btn" href="#/color/${id}" aria-label="Retour">${icon('back')}</a>
+      <h1>Préparer à l’impression</h1>
+      <button class="btn primary" id="doprint" disabled>${icon('printer')}Imprimer</button>
+    </header>
+    <div class="print-wrap">${loader('Je calcule les mélanges…')}</div>
+  </main>`;
+  let doc;
+  try { doc = await db.get(id); } catch { doc = null; }
+  if (tok !== routeTok) return;
+  if (!doc) { $('.print-wrap').innerHTML = errorBox('Coloriage introuvable', 'Il a peut-être été supprimé de cet appareil.'); return; }
+  document.title = `${doc.name}, à imprimer`;
+  await new Promise(r => setTimeout(r)); // laisse le chargement s'afficher avant le calcul
+  const rows = sortSymbols(doc.palette.map(p => p.sym)).map(sym => {
+    const p = doc.palette.find(x => x.sym === sym);
+    return { ...p, r: recipe(p.color) };
+  });
+  if (tok !== routeTok) return;
+  const url = URL.createObjectURL(doc.image);
+  cleanup.push(() => URL.revokeObjectURL(url));
+  const tubes = PAINTS.filter(t => rows.some(r => r.r.items.some(i => i.paint === t)));
+  const near = dE => (dE < 4 ? 'Très proche' : dE < 8 ? 'Proche' : 'Approché');
+  $('.print-wrap').innerHTML = `
+    <section class="print-sheet"><img src="${url}" alt="Dessin à peindre : ${esc(doc.name)}"></section>
+    <section class="print-legend">
+      <h2>${esc(doc.name)} : les mélanges</h2>
+      <p class="hint">Dosages indicatifs pour de la gouache ou de l’acrylique. Une part, c’est toujours la même quantité (une goutte, une noisette). Mélange, compare à la pastille, puis ajuste.</p>
+      <p class="tubes"><strong>Tubes nécessaires :</strong> ${tubes.map(t => `<span class="tube"><span class="dot" style="--c:${t.hex}"></span>${esc(t.name)}</span>`).join(' ')}</p>
+      <ul class="mixes">${rows.map(({ sym, color, r }) => `<li class="mix">
+        <span class="mix-sym" style="--c:${color};color:${lumOf(color) > 150 ? '#2b2230' : '#fff'}">${esc(sym)}</span>
+        <ul class="mix-parts">${r.items.map(i => `<li><span class="dot" style="--c:${i.paint.hex}"></span><strong>${r.items.length === 1 ? 'Tel quel' : plural(i.parts, 'part', 'parts')}</strong> ${esc(i.paint.name)}</li>`).join('')}</ul>
+        <span class="mix-res"><span class="dot big" style="--c:${r.mix}" aria-hidden="true"></span>${near(r.dE)}</span>
+      </li>`).join('')}</ul>
+    </section>`;
+  const btn = $('#doprint');
+  btn.disabled = false;
+  btn.onclick = () => window.print();
+}
+
 // --- Routeur --------------------------------------------------------------------
 async function route() {
   routeTok++;
@@ -967,6 +1014,7 @@ async function route() {
   if (h === '/photo') return pending && pending.photo ? viewPhoto() : (location.hash = '#/');
   if ((m = h.match(/^\/color\/([\w-]+)$/))) return viewColor(m[1]);
   if ((m = h.match(/^\/edit\/([\w-]+)$/))) return viewSetup(m[1]);
+  if ((m = h.match(/^\/print\/([\w-]+)$/))) return viewPrint(m[1]);
   location.hash = '#/';
 }
 window.addEventListener('hashchange', route);
